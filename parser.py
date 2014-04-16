@@ -113,7 +113,9 @@ def dic_of_same_variable_names(xls_file, sheet_names):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--dir', default = u"P:/Legislation/Barèmes IPP/", help = 'path of IPP XLS directory')
+#    parser.add_argument('-d', '--dir', default = u"P:/Legislation/Barèmes IPP/", help = 'path of IPP XLS directory')
+    parser.add_argument('-d', '--dir', default = u"/Users/malkaguillot/Documents/Baremes_IPP/", help = 'path of IPP XLS directory')
+
     args = parser.parse_args()
 
     baremes = [u'Prestations', u'prélèvements sociaux', u'Impôt Revenu']
