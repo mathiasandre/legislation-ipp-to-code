@@ -199,9 +199,14 @@ def main():
                     state = 'labels'
                     continue
                 if state == 'labels':
-                    xf_index = sheet.cell_xf_index(row_index, 0)
-                    xf = book.xf_list[xf_index]  # gets an XF object
-                    if xf.background.background_colour_index in heading_color_indexes:
+                    first_cell_value = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 0)
+                    date_or_year, error = conv.pipe(
+                        conv.test_isinstance(basestring),
+                        input_to_date_or_year,
+                        conv.not_none,
+                        )(first_cell_value, state = conv.default_state)
+                    if error is not None:
+                        # First cell of row is not a date => Assume it is a label.
                         labels_rows.append([
                             transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
                             for column_index in range(ncols)
