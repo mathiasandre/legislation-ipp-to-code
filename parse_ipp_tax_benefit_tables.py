@@ -37,13 +37,10 @@ http://www.ipp.eu/fr/outils/baremes-ipp/
 import argparse
 import collections
 import datetime
-import itertools
-import json
 import logging
 import os
 import re
 import sys
-import urlparse
 
 from biryani1 import baseconv, custom_conv, datetimeconv, states
 import numpy as np
@@ -52,9 +49,7 @@ import xlrd
 
 app_name = os.path.splitext(os.path.basename(__file__))[0]
 conv = custom_conv(baseconv, datetimeconv, states)
-date_color_index = 41
 french_date_re = re.compile(ur'(?P<day>0?[1-9]|[12]\d|3[01])/(?P<month>0?[1-9]|1[0-2])/(?P<year>[12]\d{3})$')
-heading_color_indexes = (31, 65)  # grey blue
 log = logging.getLogger(app_name)
 N_ = lambda message: message
 parameters = []
@@ -155,22 +150,22 @@ def main():
     logging.basicConfig(level = logging.DEBUG if args.verbose else logging.WARNING, stream = sys.stdout)
 
     forbiden_sheets = {
-        u'Impôt Revenu' : (u'Barème IGR',),
-        u'prélèvements sociaux' : (u'Abréviations', u'ASSIETTE PU', u'AUBRYI'),
+        u'Impôt Revenu': (u'Barème IGR',),
+        u'prélèvements sociaux': (u'Abréviations', u'ASSIETTE PU', u'AUBRYI'),
         }
     baremes = [u'Prestations', u'prélèvements sociaux', u'Impôt Revenu']
-    for bareme in baremes :
+    for bareme in baremes:
         xls_path = os.path.join(args.dir.decode('utf-8'), u"Barèmes IPP - {0}.xls".format(bareme))
         book = xlrd.open_workbook(filename = xls_path, formatting_info = True)
         sheet_names = [
             sheet_name
             for sheet_name in book.sheet_names()
-            if not sheet_name.startswith((u'Sommaire', u'Outline')) and not sheet_name in forbiden_sheets.get(bareme,
-                [])
+            if not sheet_name.startswith((u'Sommaire', u'Outline'))
+                and not sheet_name in forbiden_sheets.get(bareme, [])
             ]
         vector_by_taxipp_name = {}
         for sheet_name in sheet_names:
-            print sheet_name
+            log.info(u'Pasing sheet {}'.format(sheet_name))
             log.info('Parsing sheet {}'.format(sheet_name))
             sheet = book.sheet_by_name(sheet_name)
 
@@ -224,7 +219,8 @@ def main():
                                 for column_index in range(ncols)
                                 ]
                             if date_or_year is not None:
-                                assert date_or_year.year < 2601, 'Invalid date {} in {}'.format(date_or_year, sheet_name)
+                                assert date_or_year.year < 2601, 'Invalid date {} in {}'.format(date_or_year,
+                                    sheet_name)
                                 values_rows.append(values_row)
                                 continue
                             if all(value in (None, u'') for value in values_row):
@@ -247,19 +243,9 @@ def main():
                     for column_index in range(ncols)
                     ])
 
-            # Merge description cells in a single multi-line string.
-            description = u'\n'.join(
-                u' '.join(
-                    cell.strip()
-                    for cell in row
-                    if cell is not None
-                    )
-                for row in descriptions_rows
-                ) or None
-
             dates = [
-                conv.check(input_to_date_or_year)(values_row[0], state = conv.default_state).replace(day = 1)
-                for values_row in values_rows
+                conv.check(input_to_date_or_year)(row[0], state = conv.default_state).replace(day = 1)
+                for row in values_rows
                 ]
             for column_index, taxipp_name in enumerate(taxipp_names_row):
                 if taxipp_name:
@@ -277,7 +263,7 @@ def main():
             for year in range(1914, 2021)
             for month in range(1, 13)
             ]
-        data_frame = pd.DataFrame(index = months) 
+        data_frame = pd.DataFrame(index = months)
         for taxipp_name, vector in vector_by_taxipp_name.iteritems():
             data_frame[taxipp_name] = np.nan
             data_frame.loc[vector.index.values, taxipp_name] = vector.values
@@ -285,7 +271,6 @@ def main():
         data_frame.dropna(axis = 0, how = 'all', inplace = True)
         data_frame.to_csv(bareme + '.csv', encoding = 'utf-8')
         print u"Voilà, la table agrégée de {} est créée !".format(bareme)
-
 
     return 0
 
@@ -330,22 +315,25 @@ def transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, column
         value_int = int(value)
         if value_int == value:
             value = value_int
-        xf_index= sheet.cell_xf_index(row_index, column_index)
-        xf = book.xf_list[xf_index] # gets an XF object
+        xf_index = sheet.cell_xf_index(row_index, column_index)
+        xf = book.xf_list[xf_index]  # Get an XF object.
         format_key = xf.format_key
-        format = book.format_map[format_key] # gets a Format object
-        format_str = format.format_str # this is the "number format string"
+        format = book.format_map[format_key]  # Get a Format object.
+        format_str = format.format_str  # This is the "number format string".
         if format_str in ('GENERAL', u'_-* #,##0\ _€_-;\-* #,##0\ _€_-;_-* \-??\ _€_-;_-@_-') \
                 or format_str.endswith(u'0.00'):
             return value
         if format_str.endswith((u'" €"', ur'\ "€"')):
             return (value, u'EUR')
-        if format_str.endswith((ur'\ [$FRF]', ur'"FRF"', u'_-* ##,#0#.00"FRF"_-;\\-* #,##0.00,"FRF"_-;_-* "- F"R\\F_-;_-@_-', u'_-* ##,#0#"FRF"_-;\\-* #,##0,"FRF"_-;_-* "- F"R\\F_-;_-@_-')):
+        if format_str.endswith((
+                ur'\ [$FRF]',
+                ur'"FRF"',
+                u'_-* ##,#0#.00"FRF"_-;\\-* #,##0.00,"FRF"_-;_-* "- F"R\\F_-;_-@_-',
+                u'_-* ##,#0#"FRF"_-;\\-* #,##0,"FRF"_-;_-* "- F"R\\F_-;_-@_-',
+                )):
             return (value, u'FRF')
-        if format_str.endswith(u'%'):
-            return (value, u'%')
-        print str((value, format_str))
-        TODO
+        assert format_str.endswith(u'%'), 'Unexpected format "{}" for value: {}'.format(value, format_str)
+        return (value, u'%')
     elif type == 3:
         # DATE
         y, m, d, hh, mm, ss = xlrd.xldate_as_tuple(value, book.datemode)
