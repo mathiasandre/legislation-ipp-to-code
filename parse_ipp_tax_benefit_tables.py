@@ -215,7 +215,7 @@ def main():
                     state = 'values'
                 if state == 'values':
                     first_cell_value = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 0)
-                    if isinstance(first_cell_value, basestring):
+                    if first_cell_value is None or isinstance(first_cell_value, basestring):
                         date_or_year, error = input_to_date_or_year(first_cell_value, state = conv.default_state)
                         if error is None:
                             # First cell of row is a valid date or year.
@@ -223,12 +223,14 @@ def main():
                                 transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, column_index)
                                 for column_index in range(ncols)
                                 ]
-                            if date_or_year is None:
-                                assert all(value in (None, u'') for value in values_row), values_row
+                            if date_or_year is not None:
+                                assert date_or_year.year < 2601, 'Invalid date {} in {}'.format(date_or_year, sheet_name)
+                                values_rows.append(values_row)
                                 continue
-                            assert date_or_year.year < 2601, 'Invalid date {} in {}'.format(date_or_year, sheet_name)
-                            values_rows.append(values_row)
-                            continue
+                            if all(value in (None, u'') for value in values_row):
+                                # If first cell is empty and all other cells in line are also empty, ignore this line.
+                                continue
+                            # First cell has no date and other cells in row are not empty => Assume it is a note.
                     state = 'notes'
                 if state == 'notes':
                     first_cell_value = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 0)
