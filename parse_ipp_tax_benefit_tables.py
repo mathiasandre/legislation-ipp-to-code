@@ -151,9 +151,10 @@ def main():
 
     forbiden_sheets = {
         u'Impôt Revenu': (u'Barème IGR',),
-        u'prélèvements sociaux': (u'Abréviations', u'ASSIETTE PU', u'AUBRYI'),
+        u'prélèvements sociaux': (u'Abréviations', u'ASSIETTE PU', u'AUBRYI',  u'AUBRYII'),
         }
-    baremes = [u'Prestations', u'prélèvements sociaux', u'Impôt Revenu']
+    baremes = [u'Prestations', u'prélèvements sociaux',]
+#    baremes_TODO = [u'Taxation du capital', u'Impôt Revenu', u'Marché du travail', u'Chômage', u'Retraite', u'Taxes locales', u'Taxes indirectes']
     for bareme in baremes:
         xls_path = os.path.join(args.dir.decode('utf-8'), u"Barèmes IPP - {0}.xls".format(bareme))
         book = xlrd.open_workbook(filename = xls_path, formatting_info = True)
@@ -304,7 +305,6 @@ def transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, column
         unmerged_row_index, unmerged_column_index = unmerged_cell_coordinates
     type = sheet.row_types(unmerged_row_index)[unmerged_column_index]
     value = sheet.row_values(unmerged_row_index)[unmerged_column_index]
-
     if type == 0:
         value = None
     elif type == 1:
@@ -320,7 +320,7 @@ def transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, column
         format_key = xf.format_key
         format = book.format_map[format_key]  # Get a Format object.
         format_str = format.format_str  # This is the "number format string".
-        if format_str in ('GENERAL', u'_-* #,##0\ _€_-;\-* #,##0\ _€_-;_-* \-??\ _€_-;_-@_-') \
+        if format_str in ('General', 'GENERAL', u'_-* #,##0\ _€_-;\-* #,##0\ _€_-;_-* \-??\ _€_-;_-@_-') \
                 or format_str.endswith(u'0.00'):
             return value
         if format_str.endswith((u'" €"', ur'\ "€"')):
@@ -330,6 +330,7 @@ def transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, column
                 ur'"FRF"',
                 u'_-* ##,#0#.00"FRF"_-;\\-* #,##0.00,"FRF"_-;_-* "- F"R\\F_-;_-@_-',
                 u'_-* ##,#0#"FRF"_-;\\-* #,##0,"FRF"_-;_-* "- F"R\\F_-;_-@_-',
+                u'\F\R\F',
                 )):
             return (value, u'FRF')
         assert format_str.endswith(u'%'), 'Unexpected format "{}" for value: {}'.format(value, format_str)
