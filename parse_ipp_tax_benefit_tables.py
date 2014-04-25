@@ -43,6 +43,7 @@ import re
 import sys
 
 from biryani1 import baseconv, custom_conv, datetimeconv, states
+from biryani1 import strings
 import numpy as np
 import pandas as pd
 import xlrd
@@ -54,6 +55,37 @@ log = logging.getLogger(app_name)
 N_ = lambda message: message
 parameters = []
 year_re = re.compile(ur'[12]\d{3}$')
+
+
+def input_to_french_date(value, state = None):
+    if value is None:
+        return None, None
+    if state is None:
+        state = conv.default_state
+    match = french_date_re.match(value)
+    if match is None:
+        return value, state._(u'Invalid french date')
+    return datetime.date(int(match.group('year')), int(match.group('month')), int(match.group('day'))), None
+
+
+cell_to_date_or_year = conv.condition(
+    conv.test_isinstance(int),
+    conv.pipe(
+        conv.test_between(1914, 2020),
+        conv.function(lambda year: datetime.date(year, 1, 1)),
+        ),
+    conv.pipe(
+        conv.test_isinstance(basestring),
+        conv.first_match(
+            conv.pipe(
+                conv.test(lambda date: year_re.match(date), error = 'Not a valid year'),
+                conv.function(lambda year: datetime.date(year, 1, 1)),
+                ),
+            input_to_french_date,
+            conv.iso8601_input_to_date,
+            ),
+        ),
+    )
 
 
 currency_converter = conv.first_match(
@@ -80,27 +112,6 @@ currency_converter = conv.first_match(
                     ),
                 ),
             ),
-        ),
-    )
-
-
-def input_to_french_date(value, state = None):
-    if value is None:
-        return None, None
-    if state is None:
-        state = conv.default_state
-    match = french_date_re.match(value)
-    if match is None:
-        return value, state._(u'Invalid french date')
-    return datetime.date(int(match.group('year')), int(match.group('month')), int(match.group('day'))), None
-
-
-input_to_date_or_year = conv.first_match(
-    conv.iso8601_input_to_date,
-    input_to_french_date,
-    conv.pipe(
-        conv.test(lambda date: year_re.match(date), error = 'Not a valid year'),
-        conv.function(lambda year: datetime.date(year, 1, 1)),
         ),
     )
 
@@ -150,13 +161,14 @@ def main():
     logging.basicConfig(level = logging.DEBUG if args.verbose else logging.WARNING, stream = sys.stdout)
 
     forbiden_sheets = {
-        u'Impôt Revenu': (u'Barème IGR',),
-        u'prélèvements sociaux': (u'Abréviations', u'ASSIETTE PU', u'AUBRYI',  u'AUBRYII'),
+        u'Impot Revenu': (u'Barème IGR',),
+        u'prelevements sociaux': (u'Abréviations', u'ASSIETTE PU', u'AUBRYI',  u'AUBRYII'),
         }
-    baremes = [u'Prestations', u'prélèvements sociaux',]
+    baremes = [u'Chomage', u'Impot Revenu', u'prelevements sociaux', u'Prestations']
 #    baremes_TODO = [u'Taxation du capital', u'Impôt Revenu', u'Marché du travail', u'Chômage', u'Retraite', u'Taxes locales', u'Taxes indirectes']
     for bareme in baremes:
-        xls_path = os.path.join(args.dir.decode('utf-8'), u"Barèmes IPP - {0}.xls".format(bareme))
+        log.info(u'Parsing file {}'.format(bareme))
+        xls_path = os.path.join(args.dir.decode('utf-8'), u"Baremes IPP - {0}.xls".format(bareme))
         book = xlrd.open_workbook(filename = xls_path, formatting_info = True)
         sheet_names = [
             sheet_name
@@ -166,8 +178,7 @@ def main():
             ]
         vector_by_taxipp_name = {}
         for sheet_name in sheet_names:
-            log.info(u'Pasing sheet {}'.format(sheet_name))
-            log.info('Parsing sheet {}'.format(sheet_name))
+            log.info(u'  Parsing sheet {}'.format(sheet_name))
             sheet = book.sheet_by_name(sheet_name)
 
             # Extract coordinates of merged cells.
@@ -189,16 +200,20 @@ def main():
                 ncols = len(sheet.row_values(row_index))
                 if state == 'taxipp_names':
                     taxipp_names_row = [
-                        transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
-                        for column_index in range(ncols)
+                        taxipp_name
+                        for taxipp_name in (
+                            transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
+                            for column_index in range(ncols)
+                            )
+                        if strings.slugify(taxipp_name) not in ('date', 'date_ir', 'date_rev', 'note', 'ref-leg')
                         ]
                     state = 'labels'
                     continue
                 if state == 'labels':
                     first_cell_value = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 0)
                     date_or_year, error = conv.pipe(
-                        conv.test_isinstance(basestring),
-                        input_to_date_or_year,
+                        conv.test_isinstance((int, basestring)),
+                        cell_to_date_or_year,
                         conv.not_none,
                         )(first_cell_value, state = conv.default_state)
                     if error is not None:
@@ -211,8 +226,8 @@ def main():
                     state = 'values'
                 if state == 'values':
                     first_cell_value = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 0)
-                    if first_cell_value is None or isinstance(first_cell_value, basestring):
-                        date_or_year, error = input_to_date_or_year(first_cell_value, state = conv.default_state)
+                    if first_cell_value is None or isinstance(first_cell_value, (int, basestring)):
+                        date_or_year, error = cell_to_date_or_year(first_cell_value, state = conv.default_state)
                         if error is None:
                             # First cell of row is a valid date or year.
                             values_row = [
@@ -220,8 +235,8 @@ def main():
                                 for column_index in range(ncols)
                                 ]
                             if date_or_year is not None:
-                                assert date_or_year.year < 2601, 'Invalid date {} in {}'.format(date_or_year,
-                                    sheet_name)
+                                assert date_or_year.year < 2601, 'Invalid date {} in {} at row {}'.format(date_or_year,
+                                    sheet_name, row_index + 1)
                                 values_rows.append(values_row)
                                 continue
                             if all(value in (None, u'') for value in values_row):
@@ -245,14 +260,17 @@ def main():
                     ])
 
             dates = [
-                conv.check(input_to_date_or_year)(row[0], state = conv.default_state).replace(day = 1)
+                conv.check(cell_to_date_or_year)(
+                    row[1] if bareme == u'Impot Revenu' else row[0],
+                    state = conv.default_state,
+                    ).replace(day = 1)
                 for row in values_rows
                 ]
             for column_index, taxipp_name in enumerate(taxipp_names_row):
                 if taxipp_name:
                     vector = [
-                        transform_cell_value(row[column_index])
-                        for row in values_rows
+                        transform_cell_value(date, row[column_index])
+                        for date, row in zip(dates, values_rows)
                         ]
                     vector = [
                         cell if not isinstance(cell, basestring) else np.nan
@@ -276,12 +294,15 @@ def main():
     return 0
 
 
-def transform_cell_value(cell_value):
+def transform_cell_value(date, cell_value):
     if isinstance(cell_value, tuple):
         value, currency = cell_value
+        if currency == u'FRF':
+            if date < datetime.date(1960, 1, 1):
+                return round(value / (100 * 6.55957), 2)
+            return round(value / 6.55957, 2)
         return value
-    else:
-        return cell_value
+    return cell_value
 
 
 def transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, column_index):
