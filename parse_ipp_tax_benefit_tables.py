@@ -320,20 +320,18 @@ def transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, column
         format_key = xf.format_key
         format = book.format_map[format_key]  # Get a Format object.
         format_str = format.format_str  # This is the "number format string".
-        if format_str in ('General', 'GENERAL', u'_-* #,##0\ _€_-;\-* #,##0\ _€_-;_-* \-??\ _€_-;_-@_-') \
-                or format_str.endswith(u'0.00'):
+        if format_str in (
+                u'0',
+                u'General',
+                u'GENERAL',
+                u'_-* #,##0\ _€_-;\-* #,##0\ _€_-;_-* \-??\ _€_-;_-@_-',
+                ) or format_str.endswith(u'0.00'):
             return value
-        if format_str.endswith((u'" €"', ur'\ "€"')):
+        if u'€' in format_str:
             return (value, u'EUR')
-        if format_str.endswith((
-                ur'\ [$FRF]',
-                ur'"FRF"',
-                u'_-* ##,#0#.00"FRF"_-;\\-* #,##0.00,"FRF"_-;_-* "- F"R\\F_-;_-@_-',
-                u'_-* ##,#0#"FRF"_-;\\-* #,##0,"FRF"_-;_-* "- F"R\\F_-;_-@_-',
-                u'\F\R\F',
-                )):
+        if u'FRF' in format_str or ur'\F\R\F' in format_str:
             return (value, u'FRF')
-        assert format_str.endswith(u'%'), 'Unexpected format "{}" for value: {}'.format(value, format_str)
+        assert format_str.endswith(u'%'), 'Unexpected format "{}" for value: {}'.format(format_str, value)
         return (value, u'%')
     elif type == 3:
         # DATE
