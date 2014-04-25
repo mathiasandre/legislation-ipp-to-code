@@ -4,6 +4,7 @@
 *.so
 
 # Packages
+*.csv
 *.egg
 *.egg-info
 dist
